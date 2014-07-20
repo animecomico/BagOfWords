@@ -19,6 +19,7 @@
 //c++ libraries
 #include <iostream>
 #include <vector>
+#include <string>
 #include <time.h>
 #include <stdlib.h>
 #include "boost/filesystem.hpp"
@@ -29,12 +30,16 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
 
+//Defines
+#define TRAIN_PATH "training_sets/flavia_leaves_b"
+#define TEST_PATH "test_sets/flavia_leaves_b"
+#define DESCRIP_MAT_NAME "des_train_mat.yml"
 
 namespace fs = boost::filesystem;
 int minHess = 400;
 cv::SurfFeatureDetector surf_detector(minHess);
 cv::SurfDescriptorExtractor surf_extractor;
-cv::Mat surf_descriptors;
+cv::Mat training_descriptors;
 int max_nodescriptors = 0;
 int abs_no_files = 0;
 int no_classes = 0;
@@ -49,6 +54,7 @@ cv::BOWImgDescriptorExtractor bowDE(dextractor,dmatcher);
 void process_dir(const fs::path& basepath)
 {
 	int no_files = 0;
+
 	for(fs::directory_iterator iter(basepath), end; iter != end; ++iter)
 	{
 		fs::directory_entry entry = *iter;
@@ -81,8 +87,7 @@ void process_dir(const fs::path& basepath)
 
 						cv::Mat local_descriptors;
 						surf_extractor.compute(img,surf_keypoints,local_descriptors);
-						//bowTrainer.add(local_descriptors);
-						surf_descriptors.push_back(local_descriptors);
+						training_descriptors.push_back(local_descriptors);
 						surf_keypoints.clear();
 						if(local_descriptors.rows > max_nodescriptors)
 							max_nodescriptors = local_descriptors.rows;
@@ -108,6 +113,9 @@ int class_test = 0;
 void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
 {
 	int no_files = 0;
+	std::string class_name = basepath.string();
+	class_name.erase(class_name.begin(),class_name.end()-1);
+
 	for(fs::directory_iterator iter(basepath), end; iter != end; ++iter)
 	{
 		fs::directory_entry entry = *iter;
@@ -140,7 +148,8 @@ void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& label
 						cv::Mat bowDescriptor;
 						bowDE.compute(img,surf_keypoints,bowDescriptor);
 						descriptors.push_back(bowDescriptor);
-						labels.push_back(float(class_test));
+						//std::cout << class_name.c_str() << std::endl;
+						labels.push_back( float( atoi(class_name.c_str()) ) );
 						surf_keypoints.clear();
 
 						//std::cout << local_descriptors.rows << std::endl;	
@@ -170,100 +179,88 @@ int main ( int argc, char *argv[] )
 	clock_t t;	
 	// --- ---//
 	
-	//--- DESCRIPTORS EXTRACTION ---//
-	t = clock();
-	std::string file_path = "training_sets/flavia_leaves_c";
-	process_dir(fs::path(file_path));
+	std::cout << "+++ BOW FOR DATA SET +++" << std::endl;
+	std::cout << TRAIN_PATH << std::endl;
 
-	std::cout << "Total no of descriptors: "<<surf_descriptors.size() << std::endl;
-	std::cout << "Max no of descriptors in an image: " << max_nodescriptors << std::endl;
-	t = clock()-t;
-	std::cout << "Descriptors processing time:" << std::endl;
-	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
-	//--- ---//
-	
-	//--- SAVE DESCRIPTORS INTO A FILE ---//
-	cv::FileStorage fstore("test.yml", cv::FileStorage::WRITE);
-	fstore << "noDocuments" << abs_no_files;
-	fstore << "noClasses" << no_classes;	
-	fstore << "totalDescriptors" << surf_descriptors.rows;
-	fstore << "maxDescriptors" << max_nodescriptors;
-	fstore << "procTime" << ((float)t)/CLOCKS_PER_SEC;
-	fstore << "matDescriptors" << surf_descriptors;
-	fstore.release();
-	//--- ---//
-	//--- READ DESCRIPTORS FROM FILE ---//
-	std::cout << "***" << std::endl;
-	//std::cout << surf_descriptors.row(1) << std::endl;
-	cv::FileStorage fstore2("test.yml", cv::FileStorage::READ);
-	std::cout << (int)fstore2["noDocuments"] << std::endl;
-	std::cout << (int)fstore2["noClasses"] << std::endl;
-	std::cout << (int)fstore2["totalDescriptors"] << std::endl;
-	std::cout << (int)fstore2["maxDescriptors"] << std::endl;
-	std::cout << (float)fstore2["procTime"] << std::endl;
-	/*
-	cv::Mat tmp;
-	fstore2["matDescriptors"] >> tmp;
-	std::cout << tmp.row(1) << std::endl;*/
-	fstore2.release();
+	//--- DESCRIPTORS EXTRACTION ---//
+	std::string file_path = TRAIN_PATH;
+	//read descriptors from file
+	std::cout << "*** TRAIN DESCRIPTORS INFO ***" << std::endl;
+	cv::FileStorage fstore_descrip(DESCRIP_MAT_NAME, cv::FileStorage::READ);
+	std::cout << "No Documents: " << (int)fstore_descrip["noDocuments"] << std::endl;
+	std::cout << "No Classes: " << (int)fstore_descrip["noClasses"] << std::endl;
+	std::cout << "No total descriptors: " << (int)fstore_descrip["totalDescriptors"] << std::endl;
+	std::cout << "No max desrcriptors in an image: " << (int)fstore_descrip["maxDescriptors"] << std::endl;
+	std::cout << "Descriptors processing time" << (float)fstore_descrip["procTime"] << std::endl;
+	std::cout << std::endl;
+	fstore_descrip["matDescriptors"] >> training_descriptors;
+	fstore_descrip.release();
 	
 
 	//--- BUILD A DICTIONARY ---//
-	//int dictionary_size = 1000;
 	cv::TermCriteria tc(CV_TERMCRIT_ITER,100,0.001);
 	int cluster_attempts = 1;
 	int dictionary_size = atoi(argv[1]);
+	std::cout << "*** BOW DICTIONARY INFO ***" << std::endl;
 	std::cout << "Dictionary size: " << dictionary_size << std::endl; 
 	cv::BOWKMeansTrainer bowTrainer(dictionary_size,tc,cluster_attempts, cv::KMEANS_PP_CENTERS);
 
-	bowTrainer.add(surf_descriptors);
+	bowTrainer.add(training_descriptors);
 	t = clock();
 	cv::Mat my_dictionary = bowTrainer.cluster();
 	t = clock()-t;
 	std::cout << "Dictionary processing time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+	std::cout << std::endl;
 	//--- ---//
 
-	//--- Naive Bayes for classification ---//
+	//--- NAIVE BAYES FOR CLASSIFICATION ---//
 	cv::NormalBayesClassifier nb_classifier;
 	cv::Mat training_data(0,dictionary_size,CV_32FC1);
 	cv::Mat labels(0,1,CV_32FC1);
-	cv::Mat labels2(0,1,CV_32FC1);
-	cv::Mat eval_data(0,dictionary_size,CV_32FC1);
-	cv::Mat results;
 
+	//set the dictionary to bow descriptor extractor
+	std::cout << "*** CLASSIFIER TRAINING ***" << std::endl;
 	bowDE.setVocabulary(my_dictionary);
 	process_dir2(fs::path(file_path),training_data,labels);
 
-	std::cout << "Training classifier..." << std::endl;
+	// +++ for debugging - can  be commented +++//
 	std::cout << training_data.size() << " * " << labels.size() << std::endl;
 	if(training_data.type() == CV_32FC1)
-	{std::cout << "yes1" << std::endl;}
+	{std::cout << "training data matrix accepted" << std::endl;}
 	if(labels.type() == CV_32FC1)
-	{std::cout << "yes2" << std::endl;}
+	{std::cout << "labels matrix accepted" << std::endl;}
+	// +++ +++ //
 
 	t = clock();
 	nb_classifier.train(training_data,labels,cv::Mat(),cv::Mat(),false);
 	t = clock() - t;
+	nb_classifier.save("nbModel_flavia_leaves_b.yml","nbModel_flavia_leaves_b");
 	std::cout << " Training processing time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+	std::cout << std::endl;
 
 	//--- ---//
 
-	//--- Evaluation images BOW encoding ---//
+	//--- BOW ENCODING OF TEST SET AND EVALUATION ---//
+	cv::Mat ground_truth(0,1,CV_32FC1);
+	cv::Mat eval_data(0,dictionary_size,CV_32FC1);
+	cv::Mat results;
+	std::string file_path2 = TEST_PATH;
+	process_dir2(fs::path(file_path2),eval_data,ground_truth);
+	double accuRate = 0.;
 
-	std::string file_path2 = "test_sets/flavia_leaves_c";
-	process_dir2(fs::path(file_path2),eval_data,labels2);
-
-	std::cout << "Evaluating classifier..." << std::endl;
+	std::cout << "*** CLASSIFIER EVALUATION ***" << std::endl;
 	t = clock();
 	nb_classifier.predict(eval_data,&results);	
 	t = clock()-t;
 	std::cout << " Classifier evaluation time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
 
+	accuRate = 1. -( (double) cv::countNonZero(ground_truth - results) / eval_data.rows);
+	std::cout << "Accuracy rate: " << accuRate << std::endl;
 	std::cout << "Classifier Results" << std::endl;
-	std::cout << results << std::endl;
+	std::cout << results << std::endl << std::endl;
 	
 	
 
