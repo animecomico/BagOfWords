@@ -30,8 +30,8 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
 //Defines
-#define TRAIN_PATH "training_sets/flavia_leaves_b"
-#define TEST_PATH "test_sets/flavia_leaves_b"
+#define TRAIN_PATH "training_sets/flavia_leaves_a"
+#define TEST_PATH "test_sets/flavia_leaves_a"
 #define DESCRIP_MAT_NAME "descrip_train_mat.yml"
 //namespaces
 namespace fs = boost::filesystem;
@@ -52,7 +52,7 @@ void bow_encode(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
 {
 	int no_files = 0;
 	std::string class_name = basepath.string();
-	class_name.erase(class_name.begin(),class_name.end()-1);
+	class_name.erase(class_name.begin(),class_name.end()-2);
 
 	for(fs::directory_iterator iter(basepath), end; iter != end; ++iter)
 	{
@@ -173,7 +173,7 @@ int main ( int argc, char *argv[] )
 	t = clock();
 	nb_classifier.train(training_data,labels,cv::Mat(),cv::Mat(),false);
 	t = clock() - t;
-	nb_classifier.save("nbModel_flavia_leaves_b.yml","nbModel_flavia_leaves_b");
+	nb_classifier.save("nbModel_flavia_leaves_a.yml","nbModel_flavia_leaves_a");
 	std::cout << " Training processing time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
 	std::cout << std::endl;
