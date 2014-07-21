@@ -1,20 +1,20 @@
-/*
- * =====================================================================================
+/* =============================================================*/
+/* ---                 BOW MAIN - SOURCE FILE                ---*/
+/* FILENAME: bow_main.cpp 
  *
- *       Filename:  bow_try1.cpp
+ * DESCRIPTION: source file to run the full implementation of the
+ * Bag of Words algorithm. Naive Bayes is used for classification.
  *
- *    Description:  
+ * VERSION: 1.0
  *
- *        Version:  1.0
- *        Created:  07/14/2014 02:09:13 PM
- *       Revision:  none
- *       Compiler:  gcc
+ * CREATED: 07/18/2014
  *
- *         Author:  YOUR NAME (), 
- *   Organization:  
+ * COMPILER: g++
  *
- * =====================================================================================
- */
+ * AUTHOR: ARTURO GOMEZ CHAVEZ
+ * ALIAS: BOSSLEGEND33
+ * 
+ * ============================================================ */
 
 //c++ libraries
 #include <iostream>
@@ -29,88 +29,26 @@
 #include "opencv2/nonfree/nonfree.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
-
 //Defines
 #define TRAIN_PATH "training_sets/flavia_leaves_b"
 #define TEST_PATH "test_sets/flavia_leaves_b"
-#define DESCRIP_MAT_NAME "des_train_mat.yml"
-
+#define DESCRIP_MAT_NAME "descrip_train_mat.yml"
+//namespaces
 namespace fs = boost::filesystem;
-int minHess = 400;
-cv::SurfFeatureDetector surf_detector(minHess);
-cv::SurfDescriptorExtractor surf_extractor;
-cv::Mat training_descriptors;
-int max_nodescriptors = 0;
-int abs_no_files = 0;
-int no_classes = 0;
 
+//--- GLOBAL VARIABLES ---//
+//for detecting features
+int minHess = 400;
+cv::SurfFeatureDetector feature_detector(minHess);
 //for enconding images with BOW
 cv::Mat bowDescriptor;
 cv::Ptr<cv::DescriptorMatcher> dmatcher = cv::DescriptorMatcher::create("FlannBased");	
 cv::Ptr<cv::DescriptorExtractor> dextractor = cv::DescriptorExtractor::create("SURF");
 cv::BOWImgDescriptorExtractor bowDE(dextractor,dmatcher);
+//--- ---/
 
-
-void process_dir(const fs::path& basepath)
-{
-	int no_files = 0;
-
-	for(fs::directory_iterator iter(basepath), end; iter != end; ++iter)
-	{
-		fs::directory_entry entry = *iter;
-		if(fs::is_directory(entry.path()))
-		{
-			std::cout << "Processing directory: " << entry.path().string() << std::endl;
-			process_dir(entry.path());
-			no_classes++;
-		}
-		else
-		{
-			fs::path entryPath = entry.path();
-			if(entryPath.extension()==".jpg")
-			{
-			//	std::cout << "Processing file: " << entry.path().string() << std::endl;
-				no_files++;
-				abs_no_files++;
-				cv::Mat img = cv::imread(entryPath.string(),CV_LOAD_IMAGE_COLOR);
-				if(!img.empty())
-				{
-					std::vector<cv::KeyPoint> surf_keypoints;
-					surf_detector.detect(img,surf_keypoints);
-					if(surf_keypoints.empty())
-					{
-						std::cerr << "Could not find points in image: " << entryPath.string();
-						std::cerr << std::endl;
-					}
-					else
-					{
-
-						cv::Mat local_descriptors;
-						surf_extractor.compute(img,surf_keypoints,local_descriptors);
-						training_descriptors.push_back(local_descriptors);
-						surf_keypoints.clear();
-						if(local_descriptors.rows > max_nodescriptors)
-							max_nodescriptors = local_descriptors.rows;
-						//std::cout << local_descriptors.rows << std::endl;	
-						~local_descriptors;
-
-					}
-				}
-				else
-				{
-					std::cerr << "Could not read image: " << entryPath.string() << std::endl;
-				}
-												
-			}												
-		}							
-		
-	}		
-	std::cout << "No files: " << no_files << std::endl;
-
-}
-
-int class_test = 0;
-void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
+//codification of the images with the BOW vocabulary
+void bow_encode(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
 {
 	int no_files = 0;
 	std::string class_name = basepath.string();
@@ -122,8 +60,7 @@ void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& label
 		if(fs::is_directory(entry.path()))
 		{
 			std::cout << "Processing directory: " << entry.path().string() << std::endl;
-			class_test++;
-			process_dir2(entry.path(),descriptors,labels);
+			bow_encode(entry.path(),descriptors,labels);
 		}
 		else
 		{
@@ -135,9 +72,9 @@ void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& label
 				cv::Mat img = cv::imread(entryPath.string(),CV_LOAD_IMAGE_COLOR);
 				if(!img.empty())
 				{
-					std::vector<cv::KeyPoint> surf_keypoints;
-					surf_detector.detect(img,surf_keypoints);
-					if(surf_keypoints.empty())
+					std::vector<cv::KeyPoint> feature_keypoints;
+					feature_detector.detect(img,feature_keypoints);
+					if(feature_keypoints.empty())
 					{
 						std::cerr << "Could not find points in image: " << entryPath.string();
 						std::cerr << std::endl;
@@ -146,12 +83,11 @@ void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& label
 					{
 
 						cv::Mat bowDescriptor;
-						bowDE.compute(img,surf_keypoints,bowDescriptor);
+						bowDE.compute(img,feature_keypoints,bowDescriptor);
 						descriptors.push_back(bowDescriptor);
 						//std::cout << class_name.c_str() << std::endl;
 						labels.push_back( float( atoi(class_name.c_str()) ) );
-						surf_keypoints.clear();
-
+						feature_keypoints.clear();
 						//std::cout << local_descriptors.rows << std::endl;	
 						~bowDescriptor;
 
@@ -170,20 +106,22 @@ void process_dir2(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& label
 
 }
 
-
+//Main function
 int main ( int argc, char *argv[] )
 {
 	
 	//---  VARIABLES ---//
+	//saving database descriptors
+	cv::Mat training_descriptors;
 	//for measuring processing time
 	clock_t t;	
 	// --- ---//
-	
+	std::cout << std::endl;
 	std::cout << "+++ BOW FOR DATA SET +++" << std::endl;
 	std::cout << TRAIN_PATH << std::endl;
 
 	//--- DESCRIPTORS EXTRACTION ---//
-	std::string file_path = TRAIN_PATH;
+	std::string train_path = TRAIN_PATH;
 	//read descriptors from file
 	std::cout << "*** TRAIN DESCRIPTORS INFO ***" << std::endl;
 	cv::FileStorage fstore_descrip(DESCRIP_MAT_NAME, cv::FileStorage::READ);
@@ -191,7 +129,7 @@ int main ( int argc, char *argv[] )
 	std::cout << "No Classes: " << (int)fstore_descrip["noClasses"] << std::endl;
 	std::cout << "No total descriptors: " << (int)fstore_descrip["totalDescriptors"] << std::endl;
 	std::cout << "No max desrcriptors in an image: " << (int)fstore_descrip["maxDescriptors"] << std::endl;
-	std::cout << "Descriptors processing time" << (float)fstore_descrip["procTime"] << std::endl;
+	std::cout << "Descriptors processing time: " << (float)fstore_descrip["procTime"] << std::endl;
 	std::cout << std::endl;
 	fstore_descrip["matDescriptors"] >> training_descriptors;
 	fstore_descrip.release();
@@ -220,10 +158,10 @@ int main ( int argc, char *argv[] )
 	cv::Mat labels(0,1,CV_32FC1);
 
 	//set the dictionary to bow descriptor extractor
-	std::cout << "*** CLASSIFIER TRAINING ***" << std::endl;
 	bowDE.setVocabulary(my_dictionary);
-	process_dir2(fs::path(file_path),training_data,labels);
 
+	std::cout << "*** CLASSIFIER TRAINING ***" << std::endl;
+	bow_encode(fs::path(train_path),training_data,labels);
 	// +++ for debugging - can  be commented +++//
 	std::cout << training_data.size() << " * " << labels.size() << std::endl;
 	if(training_data.type() == CV_32FC1)
@@ -239,6 +177,11 @@ int main ( int argc, char *argv[] )
 	std::cout << " Training processing time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
 	std::cout << std::endl;
+	
+	//if you already have a classifier uncomment the next line and comment the all the
+	//Classifier Training section
+	//nb_classifier.load("nbModel_flavia_leaves_b.yml","nbModel_flavia_leaves_b");
+	//std::cout << "Classfier model loaded"<< std::endl;
 
 	//--- ---//
 
@@ -246,11 +189,11 @@ int main ( int argc, char *argv[] )
 	cv::Mat ground_truth(0,1,CV_32FC1);
 	cv::Mat eval_data(0,dictionary_size,CV_32FC1);
 	cv::Mat results;
-	std::string file_path2 = TEST_PATH;
-	process_dir2(fs::path(file_path2),eval_data,ground_truth);
+	std::string test_path = TEST_PATH;
 	double accuRate = 0.;
 
 	std::cout << "*** CLASSIFIER EVALUATION ***" << std::endl;
+	bow_encode(fs::path(test_path),eval_data,ground_truth);
 	t = clock();
 	nb_classifier.predict(eval_data,&results);	
 	t = clock()-t;
