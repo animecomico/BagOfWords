@@ -30,8 +30,8 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
 //Defines
-#define TRAIN_PATH "training_sets/flavia_leaves_a"
-#define TEST_PATH "test_sets/flavia_leaves_a"
+#define TRAIN_PATH "training_sets/logistics_b"
+#define TEST_PATH "test_sets/logistics_b_2"
 #define DESCRIP_MAT_NAME "descrip_train_mat.yml"
 //namespaces
 namespace fs = boost::filesystem;
@@ -67,7 +67,7 @@ void bow_encode(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
 			fs::path entryPath = entry.path();
 			if(entryPath.extension()==".jpg")
 			{
-			//	std::cout << "Processing file: " << entry.path().string() << std::endl;
+				std::cout << "Processing file: " << entry.path().string() << std::endl;
 				no_files++;
 				cv::Mat img = cv::imread(entryPath.string(),CV_LOAD_IMAGE_COLOR);
 				if(!img.empty())
@@ -173,7 +173,7 @@ int main ( int argc, char *argv[] )
 	t = clock();
 	nb_classifier.train(training_data,labels,cv::Mat(),cv::Mat(),false);
 	t = clock() - t;
-	nb_classifier.save("nbModel_flavia_leaves_a.yml","nbModel_flavia_leaves_a");
+	nb_classifier.save("nbModel_logistics_b.yml","nbModel_logistics_b");
 	std::cout << " Training processing time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
 	std::cout << std::endl;

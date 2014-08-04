@@ -31,7 +31,7 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
 //Defines
-#define DATABASE_PATH "training_sets/flavia_leaves_b"
+#define DATABASE_PATH "training_sets/logistics_b"
 #define DESCRIP_MAT_NAME "descrip_train_mat.yml"
 //Namespaces
 namespace fs = boost::filesystem;
