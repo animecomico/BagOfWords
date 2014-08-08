@@ -21,6 +21,8 @@
 #include <vector>
 #include <string>
 #include <time.h>
+#include <fstream>
+#include <iomanip>
 #include <stdlib.h>
 #include "boost/filesystem.hpp"
 //opencv libraries
@@ -29,9 +31,10 @@
 #include "opencv2/nonfree/nonfree.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
+#include "opencv2/ml/ml.hpp"
 //Defines
 #define TRAIN_PATH "training_sets/logistics_b"
-#define TEST_PATH "test_sets/logistics_b_2"
+#define TEST_PATH "test_sets/logistics_b"
 #define DESCRIP_MAT_NAME "descrip_train_mat.yml"
 //namespaces
 namespace fs = boost::filesystem;
@@ -67,7 +70,7 @@ void bow_encode(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
 			fs::path entryPath = entry.path();
 			if(entryPath.extension()==".jpg")
 			{
-				std::cout << "Processing file: " << entry.path().string() << std::endl;
+				//std::cout << "Processing file: " << entry.path().string() << std::endl;
 				no_files++;
 				cv::Mat img = cv::imread(entryPath.string(),CV_LOAD_IMAGE_COLOR);
 				if(!img.empty())
@@ -105,6 +108,34 @@ void bow_encode(const fs::path& basepath, cv::Mat& descriptors, cv::Mat& labels)
 	std::cout << "No files: " << no_files << std::endl;
 
 }
+
+void test_ranforest(CvRTrees* forest, cv::Mat& samples, cv::Mat& ground_truth, cv::Mat& results)
+{
+	//std::vector<double> results;	
+	double pred_result = 0.;	
+	int isPredCorrect = 0;
+	int mis_classif = 0;
+
+	for(int i = 0; i < samples.rows; i++)
+	{
+		pred_result = forest->predict(samples.row(i));
+		results.push_back(pred_result);
+		isPredCorrect = fabs(pred_result-ground_truth.at<float>(i)) >= FLT_EPSILON;
+		
+		if(isPredCorrect)
+		{ mis_classif++;}
+		
+	}
+
+	double error = (double)mis_classif/samples.rows;
+	std::cout << "Wrong class: " << mis_classif << " No cases: " << samples.rows;
+	std::cout << std::endl;
+	std::cout << "Error %: " << error << std::endl;	
+
+
+
+}
+
 
 //Main function
 int main ( int argc, char *argv[] )
@@ -152,16 +183,85 @@ int main ( int argc, char *argv[] )
 	std::cout << std::endl;
 	//--- ---//
 
-	//--- NAIVE BAYES FOR CLASSIFICATION ---//
-	cv::NormalBayesClassifier nb_classifier;
+	//--- BOW CODIFICATION OF TRAINING SET ---//
+	//set the dictionary for the bow decriptor extractor
 	cv::Mat training_data(0,dictionary_size,CV_32FC1);
 	cv::Mat labels(0,1,CV_32FC1);
-
-	//set the dictionary to bow descriptor extractor
 	bowDE.setVocabulary(my_dictionary);
+	bow_encode(fs::path(train_path),training_data,labels);
+
+	std::cout << "Training size: " << training_data.rows << "x" << training_data.cols << std::endl;
+	std::cout << "Labels size: " << labels.rows << "x" << labels.cols << std::endl;
+	 
+	//RANDOM FOREST CLASSIFICATION ---//
+	CvERTrees* eforest;
+	CvRTrees* forest;
+	cv::Mat var_type(training_data.cols+1,1, CV_8U, cv::Scalar(CV_VAR_ORDERED));
+	var_type.at<unsigned char>(training_data.cols,0) = CV_VAR_CATEGORICAL;
+	//cv::Mat mask_vt(training_data.cols+1,1, CV_8U, cv::Scalar(0));
+	//mask_vt.at<unsigned char>(training_data.cols) = 1;
+	//var_type.setTo(CV_VAR_CATEGORICAL, mask_vt);
+
+	float priors[] = {1., 1.};
+	std::cout << "Training random forest..." << std::endl;
+	forest = new CvRTrees;
+	std::cout << "No. samples: " << training_data.rows << std::endl;
+	forest = new CvRTrees;
+	t = clock();
+	forest->train(	training_data,	//cv::Mat containing samples and their attribute values
+			CV_ROW_SAMPLE,	//defines if there is a sample ine very row or col
+			labels,		//vector containing the responses of every sample
+			cv::Mat(),	//vector to indicate which attributes to consider for the training (0-skip)
+			cv::Mat(),	//vector to indicate which samples to consider for the training (0-skip)
+			var_type,	//matrix that states if each feature is ordered or categorical
+			cv::Mat(),	//matrix used to indicate missing values with a 1
+			CvRTParams(	150, 	//max depth of the tree
+					1,	//min number of samples in a node to make a split
+					0,	//regression acuracy, N/A for categorical, termination criteria for regression
+					true,  //compute surrogate splits
+					100, 	//max number of categories
+					0,//priors,	//array of priors (weights)
+					true,	//calculate var importance
+					0,	//active vars, number of variables used to build each tree node
+					300,	//max number of trees in the forest
+					0.01,  //sufficient accuracy (OOB error)
+					CV_TERMCRIT_ITER //termination criteria, by reaching max number of trees and/or accuracy
+			));
+
+	std::cout << "Ready" << std::endl;
+	t = clock()-t;
+	std::cout << " Classifier training time:" << std::endl;
+	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+	std::cout << "No trees: " << forest->get_tree_count() << std::endl;
+	std::cout << "Calculating training error..." << std::endl;
+	cv::Mat r;
+	test_ranforest(forest,training_data, labels, r);
+	
+	//RT for prediction
+	cv::Mat ground_truth(0,1,CV_32FC1);
+	cv::Mat eval_data(0,dictionary_size,CV_32FC1);
+	cv::Mat results;
+	std::string test_path = TEST_PATH;
+
+	std::cout << "*** CLASSIFIER EVALUATION ***" << std::endl;
+	bow_encode(fs::path(test_path),eval_data,ground_truth);
+	t = clock();
+	test_ranforest(forest, eval_data, ground_truth, results);
+	t = clock()-t;
+	std::cout << " Classifier evaluation time:" << std::endl;
+	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+	std::cout << "Classifier Results" << std::endl;
+	std::cout << results << std::endl << std::endl;
+
+	/*  */
+
+	~ground_truth;
+	~eval_data;
+	
+	//--- NAIVE BAYES FOR CLASSIFICATION ---//
+	cv::NormalBayesClassifier nb_classifier;
 
 	std::cout << "*** CLASSIFIER TRAINING ***" << std::endl;
-	bow_encode(fs::path(train_path),training_data,labels);
 	// +++ for debugging - can  be commented +++//
 	std::cout << training_data.size() << " * " << labels.size() << std::endl;
 	if(training_data.type() == CV_32FC1)
@@ -173,7 +273,7 @@ int main ( int argc, char *argv[] )
 	t = clock();
 	nb_classifier.train(training_data,labels,cv::Mat(),cv::Mat(),false);
 	t = clock() - t;
-	nb_classifier.save("nbModel_logistics_b.yml","nbModel_logistics_b");
+	//nb_classifier.save("nbModel_logistics_b.yml","nbModel_logistics_b");
 	std::cout << " Training processing time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
 	std::cout << std::endl;
@@ -186,25 +286,24 @@ int main ( int argc, char *argv[] )
 	//--- ---//
 
 	//--- BOW ENCODING OF TEST SET AND EVALUATION ---//
-	cv::Mat ground_truth(0,1,CV_32FC1);
-	cv::Mat eval_data(0,dictionary_size,CV_32FC1);
-	cv::Mat results;
-	std::string test_path = TEST_PATH;
+	cv::Mat ground_truth2(0,1,CV_32FC1);
+	cv::Mat eval_data2(0,dictionary_size,CV_32FC1);
+	cv::Mat results2;
 	double accuRate = 0.;
 
 	std::cout << "*** CLASSIFIER EVALUATION ***" << std::endl;
-	bow_encode(fs::path(test_path),eval_data,ground_truth);
+	bow_encode(fs::path(test_path),eval_data2,ground_truth2);
 	t = clock();
-	nb_classifier.predict(eval_data,&results);	
+	nb_classifier.predict(eval_data2,&results2);	
 	t = clock()-t;
 	std::cout << " Classifier evaluation time:" << std::endl;
 	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
 
-	accuRate = 1. -( (double) cv::countNonZero(ground_truth - results) / eval_data.rows);
+	accuRate = 1. -( (double) cv::countNonZero(ground_truth2 - results2) / eval_data2.rows);
 	std::cout << "Accuracy rate: " << accuRate << std::endl;
 	std::cout << "Classifier Results" << std::endl;
-	std::cout << results << std::endl << std::endl;
-	
+	std::cout << results2 << std::endl << std::endl;
+	/*  */	
 	
 
 	return 0;
