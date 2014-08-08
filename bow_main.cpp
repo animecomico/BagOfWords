@@ -120,6 +120,7 @@ void test_ranforest(CvRTrees* forest, cv::Mat& samples, cv::Mat& ground_truth, c
 	for(int i = 0; i < samples.rows; i++)
 	{
 		pred_result = forest->predict(samples.row(i));
+		std::cout << "*" << pred_result << std::endl;
 		results.push_back(pred_result);
 		isPredCorrect = fabs(pred_result-ground_truth.at<float>(i)) >= FLT_EPSILON;
 		
@@ -171,17 +172,36 @@ int main ( int argc, char *argv[] )
 	cv::TermCriteria tc(CV_TERMCRIT_ITER,100,0.001);
 	int cluster_attempts = 1;
 	int dictionary_size = atoi(argv[1]);
+	cv::Mat my_dictionary;
 	std::cout << "*** BOW DICTIONARY INFO ***" << std::endl;
-	std::cout << "Dictionary size: " << dictionary_size << std::endl; 
-	cv::BOWKMeansTrainer bowTrainer(dictionary_size,tc,cluster_attempts, cv::KMEANS_PP_CENTERS);
+	std::cout << "Dictionary size: " << dictionary_size << std::endl;
 
-	bowTrainer.add(training_descriptors);
-	t = clock();
-	cv::Mat my_dictionary = bowTrainer.cluster();
-	t = clock()-t;
-	std::cout << "Dictionary processing time:" << std::endl;
-	std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
-	std::cout << std::endl;
+	if(argc == 3)
+ 	{
+		cv::BOWKMeansTrainer bowTrainer(dictionary_size,tc,cluster_attempts, cv::KMEANS_PP_CENTERS);
+		bowTrainer.add(training_descriptors);
+		std::cout << "Creating dictionary..." << std::endl;
+		t = clock();
+		my_dictionary = bowTrainer.cluster();
+		t = clock()-t;
+		std::cout << "Dictionary processing time:" << std::endl;
+		std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+		std::cout << std::endl;
+		cv::FileStorage fstore_set_dictionary("dictionary.yml", cv::FileStorage::WRITE);
+		fstore_set_dictionary << "dictionary" << my_dictionary;
+		fstore_set_dictionary.release();
+	}
+	else if(argc == 4)
+	{
+		cv::FileStorage fstore_get_dictionary(argv[3], cv::FileStorage::READ);
+		fstore_get_dictionary["dictionary"] >> my_dictionary;
+		std::cout << "Dictionary loaded" << std::endl;
+		fstore_get_dictionary.release();
+	}
+	else
+	{
+		std::cout << "The number of initial parameters is not correct" << std::endl;
+	}
 	//--- ---//
 
 	//--- BOW CODIFICATION OF TRAINING SET ---//
