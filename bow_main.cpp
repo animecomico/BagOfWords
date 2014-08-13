@@ -138,6 +138,33 @@ void test_ranforest(CvRTrees* forest, cv::Mat& samples, cv::Mat& ground_truth, c
 
 }
 
+void test_eranforest(CvERTrees* eforest, cv::Mat& samples, cv::Mat& ground_truth, cv::Mat& results)
+{
+	//std::vector<double> results;	
+	double pred_result = 0.;	
+	int isPredCorrect = 0;
+	int mis_classif = 0;
+
+	for(int i = 0; i < samples.rows; i++)
+	{
+		pred_result = eforest->predict(samples.row(i));
+		std::cout << "*" << pred_result << std::endl;
+		results.push_back(pred_result);
+		isPredCorrect = fabs(pred_result-ground_truth.at<float>(i)) >= FLT_EPSILON;
+		
+		if(isPredCorrect)
+		{ mis_classif++;}
+		
+	}
+
+	double error = (double)mis_classif/samples.rows;
+	std::cout << "Wrong class: " << mis_classif << " No cases: " << samples.rows;
+	std::cout << std::endl;
+	std::cout << "Error %: " << error << std::endl;	
+
+
+
+}
 
 //Main function
 int main ( int argc, char *argv[] )
@@ -291,7 +318,7 @@ int main ( int argc, char *argv[] )
 			//mask_vt.at<unsigned char>(training_data.cols) = 1;
 			//var_type.setTo(CV_VAR_CATEGORICAL, mask_vt);
 
-			//float priors[] = {1., 1.};
+			float priors[] = {1., 1.};
 			std::cout << "Training random forest..." << std::endl;
 			forest = new CvRTrees;
 			std::cout << "No. samples: " << training_data.rows << std::endl;
@@ -307,7 +334,7 @@ int main ( int argc, char *argv[] )
 					CvRTParams(	150, 	//max depth of the tree
 							1,	//min number of samples in a node to make a split
 							0,	//regression acuracy, N/A for categorical, termination criteria for regression
-							true,  //compute surrogate splits
+							false,  //compute surrogate splits
 							100, 	//max number of categories
 							0,//priors,	//array of priors (weights)
 							true,	//calculate var importance
@@ -339,8 +366,60 @@ int main ( int argc, char *argv[] )
 			break;
 
 		case 3:
+			{
 			std::cout << "EXTREMELY RANDOM FOREST CLASSIFIER" << std::endl;
+			//---  EXTREMELY RANDOM FOREST CLASSIFICATION ---//
+			CvERTrees* eforest;
+			cv::Mat var_type(training_data.cols+1,1, CV_8U, cv::Scalar(CV_VAR_ORDERED));
+			var_type.at<unsigned char>(training_data.cols,0) = CV_VAR_CATEGORICAL;
+
+			float priors[] = {1., 1.};
+			std::cout << "Training extremely random forest..." << std::endl;
+			eforest = new CvERTrees;
+			std::cout << "No. samples: " << training_data.rows << std::endl;
+			t = clock();
+			eforest->train(	training_data,	//cv::Mat containing samples and their attribute values
+					CV_ROW_SAMPLE,	//defines if there is a sample ine very row or col
+					labels,		//vector containing the responses of every sample
+					cv::Mat(),	//vector to indicate which attributes to consider for the training (0-skip)
+					cv::Mat(),	//vector to indicate which samples to consider for the training (0-skip)
+					var_type,	//matrix that states if each feature is ordered or categorical
+					cv::Mat(),	//matrix used to indicate missing values with a 1
+					CvRTParams(	30, 	//max depth of the tree
+							1,	//min number of samples in a node to make a split
+							0,	//regression acuracy, N/A for categorical, termination criteria for regression
+							false,  //compute surrogate splits
+							100, 	//max number of categories
+							0,//priors,	//array of priors (weights)
+							true,	//calculate var importance
+							15,	//active vars, number of variables used to build each tree node
+							100,	//max number of trees in the forest
+							0.01,  //sufficient accuracy (OOB error)
+							CV_TERMCRIT_ITER //termination criteria, by reaching max number of trees and/or accuracy
+					));
+
+			std::cout << "Ready" << std::endl;
+			t = clock()-t;
+			std::cout << " Classifier training time:" << std::endl;
+			std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+			std::cout << "No trees: " << eforest->get_tree_count() << std::endl;
+			std::cout << "Calculating training error..." << std::endl;
+			cv::Mat r;
+			test_eranforest(eforest,training_data, labels, r);
+
+			std::cout << "TESTING CASES" << std::endl;
+			t = clock();
+			test_eranforest(eforest, eval_data, ground_truth, results);
+			t = clock()-t;
+			std::cout << " Classifier evaluation time:" << std::endl;
+			std::cout << t << " clicks " << ((float)t)/CLOCKS_PER_SEC << " seconds" << std::endl;
+			std::cout << "Classifier Results" << std::endl;
+			std::cout << results << std::endl << std::endl;
+			
+			}
 			break;
+
+
 		default:
 			std::cout << "NO CLASSIFIER WAS SELECTED OR NOT RECOGNIZED" << std::endl;
 			break;
